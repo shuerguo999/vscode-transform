@@ -3,7 +3,7 @@
   "publisher": "yexi",
   "displayName": "transform",
   "description": "transform code when change code",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "engines": {
     "vscode": "^1.44.0"
   },
@@ -61,7 +61,7 @@
     "glob": "^7.1.6",
     "mocha": "^7.1.1",
     "typescript": "^3.8.3",
-	"vscode-test": "^1.3.0",
-	"gogoast": "^0.0.5"
+    "vscode-test": "^1.3.0",
+    "gogoast": "^0.0.5"
   }
 }
