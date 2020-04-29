@@ -11,48 +11,36 @@ const fs = require('fs');
  * @param {vscode.ExtensionContext} context
  */
 function activate(context) {
+	const config = vscode.workspace.getConfiguration();
+	const fileType = config.get('fileType');
+	const outputDir = config.get('outputDir');
+	const inputDir = config.get('inputDir');
 
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
-
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with  registerCommand
-	// The commandId parameter must match the command field in package.json
-	let disposable = vscode.commands.registerCommand('transform.addExport', function () {
-		// The code you place here will be executed every time your command is executed
-		const config = vscode.workspace.getConfiguration();
-		const fileType = config.get('fileType');
-		const outputDir = config.get('outputDir');
-		const inputDir = config.get('inputDir');
-
-		const rootPath = vscode.workspace.workspaceFolders[0].uri.fsPath;
-		glob(`${rootPath}/${inputDir}/**/*${fileType}`,{}, (err, fileList) => {
-			fileList.forEach(file => {
-				addExport(file, inputDir, outputDir);
-			})
+	const rootPath = vscode.workspace.workspaceFolders[0].uri.fsPath;
+	glob(`${rootPath}/${inputDir}/**/*${fileType}`,{}, (err, fileList) => {
+		fileList.forEach(file => {
+			addExport(file, inputDir, outputDir);
 		})
+	})
 
-		console.log(vscode.workspace.workspaceFolders);
-		// Display a message box to the user
-		const watcher = vscode.workspace.createFileSystemWatcher(`**/*${fileType}`, false, false, false);
-		console.log(`**/*${fileType}`)
-		watcher.onDidChange(e => { // 文件发生更新
-			if (e.fsPath.match(`${inputDir}/`)) {
-				console.log('file changed', e.fsPath);
-				addExport(e.fsPath, inputDir, outputDir)
-			}
-		});
-		watcher.onDidCreate(e => { // 新建了js文件
-			console.log('file created');
+	console.log(vscode.workspace.workspaceFolders);
+
+	const watcher = vscode.workspace.createFileSystemWatcher(`**/*${fileType}`, false, false, false);
+	console.log(`**/*${fileType}`)
+	watcher.onDidChange(e => { // 文件发生更新
+		if (e.fsPath.match(`${inputDir}/`)) {
+			console.log('file changed', e.fsPath);
 			addExport(e.fsPath, inputDir, outputDir)
-		});
-		// watcher.onDidDelete(e => { // 删除了js文件
-		// 	console.log('js deleted,');
-		// 	// addExport(fileType, inputDir, outputDir)
-		// });
+		}
 	});
-
-	context.subscriptions.push(disposable);
+	watcher.onDidCreate(e => { // 新建了js文件
+		console.log('file created');
+		addExport(e.fsPath, inputDir, outputDir)
+	});
+	// watcher.onDidDelete(e => { // 删除了js文件
+	// 	console.log('js deleted,');
+	// 	// addExport(fileType, inputDir, outputDir)
+	// });
 }
 exports.activate = activate;
 

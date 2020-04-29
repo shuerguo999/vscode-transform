@@ -7,12 +7,15 @@
   "engines": {
     "vscode": "^1.44.0"
   },
-  "git": "git@github.com:shuerguo999/vscode-transform.git",
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:shuerguo999/vscode-transform.git"
+  },
   "categories": [
     "Other"
   ],
   "activationEvents": [
-    "onCommand:transform.addExport"
+    "workspaceContains:**/*.json"
   ],
   "main": "./extension.js",
   "contributes": {
