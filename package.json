@@ -65,6 +65,7 @@
     "gogoast": "^0.0.5"
   },
   "dependencies": {
-    "gogoast": "^0.0.5"
+    "gogoast": "^0.0.5",
+    "glob": "^7.1.6"
   }
 }
