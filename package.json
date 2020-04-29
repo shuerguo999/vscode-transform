@@ -19,27 +19,6 @@
   ],
   "main": "./extension.js",
   "contributes": {
-    "configuration": {
-      "type": "object",
-      "title": "transform",
-      "properties": {
-        "fileType": {
-          "type": "string",
-          "default": ".{ts,js}",
-          "description": "待转换的文件后缀"
-        },
-        "inputDir": {
-          "type": "string",
-          "default": "src",
-          "description": "待转换的文件存放的目录"
-        },
-        "outputDir": {
-          "type": "string",
-          "default": "dist",
-          "description": "转换后的文件存放的目录"
-        }
-      }
-    },
     "commands": [
       {
         "command": "transform.addExport",

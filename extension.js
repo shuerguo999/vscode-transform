@@ -10,67 +10,104 @@ const fs = require('fs');
 /**
  * @param {vscode.ExtensionContext} context
  */
-function activate(context) {
-	const config = vscode.workspace.getConfiguration();
-	const fileType = config.get('fileType');
-	const outputDir = config.get('outputDir');
-	const inputDir = config.get('inputDir');
 
+const Config = {
+	fileType: '.{ts,js}',
+	outputDir: 'transform',
+	inputDir: 'src'
+}
+
+function activate(context) {
 	const rootPath = vscode.workspace.workspaceFolders[0].uri.fsPath;
-	glob(`${rootPath}/${inputDir}/**/*${fileType}`,{}, (err, fileList) => {
-		fileList.forEach(file => {
-			addExport(file, inputDir, outputDir);
-		})
-	})
+	let configJSON = {};
+	try {
+		configJSON = JSON.parse(fs.readFileSync(`${rootPath}/.vscode/.transform.json`).toString());
+	} catch(e) {
+
+	}
+	Object.assign(Config, configJSON);
+
+	addAllExport({ rootPath});
 
 	console.log(vscode.workspace.workspaceFolders);
 
+	watchSrcFile();
+	
+	watchConfigFile(rootPath);
+}
+exports.activate = activate;
+
+function watchConfigFile(rootPath) {
+	const configWatcher = vscode.workspace.createFileSystemWatcher(`**/.transform.json`, false, false, false);
+	configWatcher.onDidChange(e => { // 文件发生更新
+		const configJSON = JSON.parse(fs.readFileSync(`${rootPath}/.vscode/.transform.json`).toString());
+		Object.assign(Config, configJSON);
+		addAllExport({ rootPath });
+	});
+	configWatcher.onDidCreate(e => {
+		const configJSON = JSON.parse(fs.readFileSync(`${rootPath}/.vscode/.transform.json`).toString());
+		Object.assign(Config, configJSON);
+		addAllExport({ rootPath });
+	});
+	configWatcher.onDidDelete(e => {
+
+	});
+}
+
+function watchSrcFile() {
+	const { inputDir, fileType } = Config;
 	const watcher = vscode.workspace.createFileSystemWatcher(`**/*${fileType}`, false, false, false);
 	console.log(`**/*${fileType}`)
 	watcher.onDidChange(e => { // 文件发生更新
 		if (e.fsPath.match(`${inputDir}/`)) {
 			console.log('file changed', e.fsPath);
-			addExport(e.fsPath, inputDir, outputDir)
+			addExport(e.fsPath)
 		}
 	});
 	watcher.onDidCreate(e => { // 新建了js文件
-		console.log('file created');
-		addExport(e.fsPath, inputDir, outputDir)
+		if (e.fsPath.match(`${inputDir}/`)) {
+			console.log('file created');
+			addExport(e.fsPath)
+		}
 	});
-	// watcher.onDidDelete(e => { // 删除了js文件
-	// 	console.log('js deleted,');
-	// 	// addExport(fileType, inputDir, outputDir)
-	// });
 }
-exports.activate = activate;
 
-// function addExport(fileType, inputDir, outputDir) {
-// 	glob(`${inputDir}/**/*${fileType}`, {}, (err, fileList) => {
-// 		console.log(fileType,inputDir,outputDir)
-// 	})
-// }
-function addExport(file, inputDir, outputDir) {
+function addAllExport({rootPath}) {
+	const { inputDir, outputDir, fileType } = Config;
+	glob(`${rootPath}/${inputDir}/**/*${fileType}`,{}, (err, fileList) => {
+		fileList.forEach(file => {
+			addExport(file, inputDir, outputDir);
+		})
+	})
+}
 
+function addExport(file) {
+	const { inputDir, outputDir } = Config;
 	const code = fs.readFileSync(file).toString();
 	const AST = gogoast.createAstObj(code);     // code是源代码字符串
 
 	const { nodePathList } = AST.getAstsBySelector([
-	`const $_$ = $_$`,
-	`function $_$() {}`,
-	`type $_$ = $_$`,
-	`type $_$ = $_$ | $_$`,
-	`interface $_$ {}`
+		`const $_$ = $_$`,
+		`function $_$() {}`,
+		`type $_$ = $_$`,
+		`type $_$ = $_$ | $_$`,
+		`interface $_$ {}`
 	], true, 'n');   // 匹配到最外层的变量定义
 	nodePathList.forEach(n => {
-	if (n.parent.node.type == 'ExportNamedDeclaration') {    // declarator类型的节点肯定至少存在两级parent，不会报错
-		return;     // 已经export的不处理
-	}
-	gogoast.replaceAstByAst(n, { type: 'ExportNamedDeclaration', declaration: n.value })
+		if (n.parent.node.type == 'ExportNamedDeclaration') {    // declarator类型的节点肯定至少存在两级parent，不会报错
+			return;     // 已经export的不处理
+		}
+		gogoast.replaceAstByAst(n, { type: 'ExportNamedDeclaration', declaration: n.value })
 	})
-	fs.writeFileSync(file.replace(`${inputDir}/`, `${outputDir}/`), AST.generate())
+	const outputFile = file.replace(`${inputDir}/`, `${outputDir}/`);
+	fs.mkdir(outputFile.replace(/\/[^\/]+$/, ''),{ recursive: true }, function(err){
+		if (err) {
+			return console.error(err);
+		}
+		fs.writeFileSync(outputFile, AST.generate())
+	});
 }
 
-// this method is called when your extension is deactivated
 function deactivate() {}
 
 module.exports = {
