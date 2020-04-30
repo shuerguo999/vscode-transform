@@ -4,6 +4,7 @@ const vscode = require('vscode');
 const gogoast = require('gogoast');
 const glob = require('glob');
 const fs = require('fs');
+const path = require('path');
 
 /**
  * @param {vscode.ExtensionContext} context
@@ -29,9 +30,9 @@ function activate(context) {
 		return;
 	}
 
-	addAllExport({ rootPath});
+	addAllExport(rootPath);
 
-	watchSrcFile();
+	watchSrcFile(rootPath);
 }
 
 function getConfig(rootPath) {
@@ -85,7 +86,7 @@ function watchConfigFile(rootPath) {
 	});
 }
 
-function watchSrcFile() {
+function watchSrcFile(rootPath) {
 	const { inputDir, fileType } = Config;
 	if (srcFileWatcher) {
 		srcFileWatcher.dispose();
@@ -93,15 +94,14 @@ function watchSrcFile() {
 	}
 	console.log('watch file');
 	const watcher = vscode.workspace.createFileSystemWatcher(`**/*${fileType}`, false, false, false);
-	console.log(`**/*${fileType}`)
 	watcher.onDidChange(e => { // 文件发生更新
-		if (e.fsPath.match(`${inputDir}/`)) {
+		if (e.fsPath.match(`${rootPath}/${inputDir}/`)) {
 			console.log('file changed', e.fsPath);
 			addExport(e.fsPath)
 		}
 	});
 	watcher.onDidCreate(e => { // 新建了js文件
-		if (e.fsPath.match(`${inputDir}/`)) {
+		if (e.fsPath.match(`${rootPath}/${inputDir}/`)) {
 			console.log('file created');
 			addExport(e.fsPath)
 		}
@@ -109,7 +109,7 @@ function watchSrcFile() {
 	srcFileWatcher = watcher;
 }
 
-function addAllExport({rootPath}) {
+function addAllExport(rootPath) {
 	const { inputDir, outputDir, fileType } = Config;
 	glob(`${rootPath}/${inputDir}/**/*${fileType}`,{}, (err, fileList) => {
 		fileList.forEach(file => {
@@ -133,18 +133,20 @@ function addExport(file) {
 		`interface $_$ {}`
 	], true, 'n');   // 匹配到最外层的变量定义
 	nodePathList.forEach(n => {
-		if (n.parent.node.type == 'ExportNamedDeclaration') {    // declarator类型的节点肯定至少存在两级parent，不会报错
+		if (n.parent.node.type == 'ExportNamedDeclaration') {    // declaration类型的节点肯定存在parent
 			return;     // 已经export的不处理
 		}
 		gogoast.replaceAstByAst(n, { type: 'ExportNamedDeclaration', declaration: n.value })
 	})
 	const outputFile = file.replace(`${inputDir}/`, `${outputDir}/`);
-	fs.mkdir(outputFile.replace(/\/[^\/]+$/, ''),{ recursive: true }, function(err){
-		if (err) {
-			return console.error(err);
-		}
-		fs.writeFileSync(outputFile, AST.generate())
-	});
+	if (outputFile.match(`${outputDir}/`)) {
+		fs.mkdir(path.resolve(outputFile, '../'),{ recursive: true }, function(err){
+			if (err) {
+				return console.error(err);
+			}
+			fs.writeFileSync(outputFile, AST.generate())
+		});
+	}
 }
 
 function deactivate() {}
