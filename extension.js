@@ -4,8 +4,6 @@ const vscode = require('vscode');
 const gogoast = require('gogoast');
 const glob = require('glob');
 const fs = require('fs');
-// this method is called when your extension is activated
-// your extension is activated the very first time the command is executed
 
 /**
  * @param {vscode.ExtensionContext} context
@@ -17,45 +15,83 @@ const Config = {
 	inputDir: 'src'
 }
 
+let srcFileWatcher = null;
+let configWatcher = null;
+
 function activate(context) {
 	const rootPath = vscode.workspace.workspaceFolders[0].uri.fsPath;
-	let configJSON = {};
-	try {
-		configJSON = JSON.parse(fs.readFileSync(`${rootPath}/.vscode/.transform.json`).toString());
-	} catch(e) {
 
+	watchConfigFile(rootPath);
+
+	const { hasTransformFile } = getConfig(rootPath);
+	console.log(hasTransformFile ? 'hasConfig' : 'noConfig');
+	if (!hasTransformFile) {
+		return;
 	}
-	Object.assign(Config, configJSON);
 
 	addAllExport({ rootPath});
 
-	console.log(vscode.workspace.workspaceFolders);
-
 	watchSrcFile();
-	
-	watchConfigFile(rootPath);
 }
-exports.activate = activate;
+
+function getConfig(rootPath) {
+	let configFileContent = '';
+	let hasTransformFile = false;
+	try {
+		configFileContent = fs.readFileSync(`${rootPath}/.vscode/.transform.json`).toString();
+		hasTransformFile = true;
+	} catch(e) {
+		console.error(e.message);
+		return { hasTransformFile };
+	}
+	
+	try {
+		configJSON = JSON.parse(configFileContent);
+		Object.assign(Config, configJSON);
+	} catch(e) {
+		console.error(e.message);
+	}
+	return { hasTransformFile };
+}
 
 function watchConfigFile(rootPath) {
-	const configWatcher = vscode.workspace.createFileSystemWatcher(`**/.transform.json`, false, false, false);
+	console.log('watch config')
+	if (configWatcher) {
+		configWatcher.dispose();
+		configWatcher = null;
+	}
+	configWatcher = vscode.workspace.createFileSystemWatcher(`**/.transform.json`, false, false, false);
 	configWatcher.onDidChange(e => { // 文件发生更新
-		const configJSON = JSON.parse(fs.readFileSync(`${rootPath}/.vscode/.transform.json`).toString());
-		Object.assign(Config, configJSON);
-		addAllExport({ rootPath });
+		const { hasTransformFile } = getConfig(rootPath);
+		if (!hasTransformFile) {
+			return;
+		}
+		console.log('config change')
+		addAllExport({ rootPath});
 	});
 	configWatcher.onDidCreate(e => {
-		const configJSON = JSON.parse(fs.readFileSync(`${rootPath}/.vscode/.transform.json`).toString());
-		Object.assign(Config, configJSON);
-		addAllExport({ rootPath });
+		const { hasTransformFile } = getConfig(rootPath);
+		if (!hasTransformFile) {
+			return;
+		}
+		console.log('config create')
+		addAllExport({ rootPath});
+		watchSrcFile()
 	});
 	configWatcher.onDidDelete(e => {
-
+		console.log('config delete')
+		srcFileWatcher && srcFileWatcher.dispose();
+		srcFileWatcher = null;
 	});
 }
 
 function watchSrcFile() {
 	const { inputDir, fileType } = Config;
+	if (srcFileWatcher) {
+		srcFileWatcher.dispose();
+		srcFileWatcher = null;
+	}
+	console.log('watch file');
 	const watcher = vscode.workspace.createFileSystemWatcher(`**/*${fileType}`, false, false, false);
 	console.log(`**/*${fileType}`)
 	watcher.onDidChange(e => { // 文件发生更新
@@ -70,6 +106,7 @@ function watchSrcFile() {
 			addExport(e.fsPath)
 		}
 	});
+	srcFileWatcher = watcher;
 }
 
 function addAllExport({rootPath}) {
@@ -88,6 +125,8 @@ function addExport(file) {
 
 	const { nodePathList } = AST.getAstsBySelector([
 		`const $_$ = $_$`,
+		`var $_$ = $_$`,
+		`let $_$ = $_$`,
 		`function $_$() {}`,
 		`type $_$ = $_$`,
 		`type $_$ = $_$ | $_$`,
