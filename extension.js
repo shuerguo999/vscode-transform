@@ -10,7 +10,7 @@ const path = require('path');
  * @param {vscode.ExtensionContext} context
  */
 
-const Config = {
+let Config = {
 	fileType: '.{ts,js}',
 	outputDir: 'transform',
 	inputDir: 'src'
@@ -48,8 +48,22 @@ function getConfig(rootPath) {
 	
 	try {
 		configJSON = JSON.parse(configFileContent);
-		Object.assign(Config, configJSON);
+		for( let c in configJSON) {
+			if (!configJSON[c]){
+				delete configJSON[c];
+			}
+		}
+		Object.assign(Config, {
+			fileType: '.{ts,js}',
+			outputDir: 'transform',
+			inputDir: 'src'
+		}, configJSON);
 	} catch(e) {
+		Object.assign(Config, {
+			fileType: '.{ts,js}',
+			outputDir: 'transform',
+			inputDir: 'src'
+		})
 		console.error(e.message);
 	}
 	return { hasTransformFile };
@@ -68,7 +82,7 @@ function watchConfigFile(rootPath) {
 			return;
 		}
 		console.log('config change')
-		addAllExport({ rootPath});
+		addAllExport(rootPath);
 	});
 	configWatcher.onDidCreate(e => {
 		const { hasTransformFile } = getConfig(rootPath);
@@ -76,13 +90,18 @@ function watchConfigFile(rootPath) {
 			return;
 		}
 		console.log('config create')
-		addAllExport({ rootPath});
-		watchSrcFile()
+		addAllExport(rootPath);
+		watchSrcFile(rootPath)
 	});
 	configWatcher.onDidDelete(e => {
 		console.log('config delete')
 		srcFileWatcher && srcFileWatcher.dispose();
 		srcFileWatcher = null;
+		Object.assign(Config, {
+			fileType: '.{ts,js}',
+			outputDir: 'transform',
+			inputDir: 'src'
+		})
 	});
 }
 
@@ -97,13 +116,13 @@ function watchSrcFile(rootPath) {
 	watcher.onDidChange(e => { // 文件发生更新
 		if (e.fsPath.match(`${rootPath}/${inputDir}/`)) {
 			console.log('file changed', e.fsPath);
-			addExport(e.fsPath)
+			addExport(e.fsPath, rootPath)
 		}
 	});
 	watcher.onDidCreate(e => { // 新建了js文件
 		if (e.fsPath.match(`${rootPath}/${inputDir}/`)) {
 			console.log('file created');
-			addExport(e.fsPath)
+			addExport(e.fsPath, rootPath)
 		}
 	});
 	srcFileWatcher = watcher;
@@ -111,42 +130,57 @@ function watchSrcFile(rootPath) {
 
 function addAllExport(rootPath) {
 	const { inputDir, outputDir, fileType } = Config;
+
 	glob(`${rootPath}/${inputDir}/**/*${fileType}`,{}, (err, fileList) => {
 		fileList.forEach(file => {
-			addExport(file, inputDir, outputDir);
+			try {
+				hasFile = fs.readFileSync(file.replace(`${rootPath}/${inputDir}`, `${rootPath}/${outputDir}`));
+			} catch(e) {
+				try {
+					addExport(file, rootPath);
+				} catch(e) {
+					console.error(e.message);
+				}	
+			}
 		})
 	})
 }
 
-function addExport(file) {
+function addExport(file, rootPath) {
 	const { inputDir, outputDir } = Config;
-	const code = fs.readFileSync(file).toString();
-	const AST = gogoast.createAstObj(code);     // code是源代码字符串
-
-	const { nodePathList } = AST.getAstsBySelector([
-		`const $_$ = $_$`,
-		`var $_$ = $_$`,
-		`let $_$ = $_$`,
-		`function $_$() {}`,
-		`type $_$ = $_$`,
-		`type $_$ = $_$ | $_$`,
-		`interface $_$ {}`
-	], true, 'n');   // 匹配到最外层的变量定义
-	nodePathList.forEach(n => {
-		if (n.parent.node.type == 'ExportNamedDeclaration') {    // declaration类型的节点肯定存在parent
-			return;     // 已经export的不处理
+	fs.readFile(file, (err, data) => {
+		if (err) {
+			console.error(err.message);
+			return;
 		}
-		gogoast.replaceAstByAst(n, { type: 'ExportNamedDeclaration', declaration: n.value })
-	})
-	const outputFile = file.replace(`${inputDir}/`, `${outputDir}/`);
-	if (outputFile.match(`${outputDir}/`)) {
-		fs.mkdir(path.resolve(outputFile, '../'),{ recursive: true }, function(err){
-			if (err) {
-				return console.error(err);
+		const code = data.toString();
+		const AST = gogoast.createAstObj(code);     // code是源代码字符串
+	
+		const { nodePathList } = AST.getAstsBySelector([
+			`const $_$ = $_$`,
+			`var $_$ = $_$`,
+			`let $_$ = $_$`,
+			`function $_$() {}`,
+			`type $_$ = $_$`,
+			`type $_$ = $_$ | $_$`,
+			`interface $_$ {}`
+		], true, 'n');   // 匹配到最外层的变量定义
+		nodePathList.forEach(n => {
+			if (n.parent.node.type == 'ExportNamedDeclaration') {    // declaration类型的节点肯定存在parent
+				return;     // 已经export的不处理
 			}
-			fs.writeFileSync(outputFile, AST.generate())
-		});
-	}
+			gogoast.replaceAstByAst(n, { type: 'ExportNamedDeclaration', declaration: n.value })
+		})
+		const outputFile = file.replace(`${rootPath}/${inputDir}/`, `${rootPath}/${outputDir}/`);
+		if (outputFile.match(`${rootPath}/${outputDir}/`)) {
+			fs.mkdir(path.resolve(outputFile, '../'),{ recursive: true }, function(err){
+				if (err) {
+					return console.error(err);
+				}
+				fs.writeFileSync(outputFile, AST.generate())
+			});
+		}
+	})
 }
 
 function deactivate() {}
